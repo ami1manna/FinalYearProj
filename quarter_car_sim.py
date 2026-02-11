@@ -400,7 +400,7 @@ def compare_controllers(road_profile, severity_profile=None):
     axes[3].grid(True)
     
     plt.tight_layout()
-    plt.savefig('/home/claude/suspension_comparison.png', dpi=150)
+    plt.savefig('suspension_comparison.png', dpi=150)
     print("Plot saved to suspension_comparison.png")
     
     # Compute metrics

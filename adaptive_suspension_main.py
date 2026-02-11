@@ -13,8 +13,8 @@ from collections import deque
 import time
 
 # Import your existing modules
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(PROJECT_ROOT)
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from pothole_detector import PotholeDetector
 from midas.midas_utils import MiDaSDepthEstimator
@@ -68,11 +68,12 @@ class AdaptiveSuspensionSystem:
             camera_config.get('focal_length', camera_config['width'])
         )
         
+        dist_coeffs = np.zeros((4, 1))  # No distortion assumed
         self.distance_estimator = IPMDistanceEstimator(
-            camera_matrix=K,
-            dist_coeffs=None,  # Add distortion coefficients if available
-            camera_height=camera_config['camera_height'],
-            pitch_angle=camera_config['pitch_angle']
+            K,
+            dist_coeffs,
+            camera_config['camera_height'],
+            camera_config['pitch_angle']
         )
         print("✓ Distance estimator initialized")
         
@@ -279,6 +280,9 @@ class AdaptiveSuspensionSystem:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             y_offset += 25
         
+        # Add suspension damping bar visualization
+        self._draw_suspension_bar(output, control_data)
+        
         return output, control_data
     
     def _severity_color(self, severity_name):
@@ -290,6 +294,70 @@ class AdaptiveSuspensionSystem:
             "CRITICAL": (0, 0, 255)
         }
         return colors.get(severity_name, (255, 255, 255))
+    
+    def _draw_suspension_bar(self, frame, control_data):
+        """
+        Draw real-time suspension damping level bar.
+        
+        Parameters:
+        -----------
+        frame : np.ndarray
+            Video frame to draw on
+        control_data : dict
+            Control data containing current damping values
+        """
+        # Get current damping from most recent pothole or default
+        if control_data['potholes']:
+            # Use the most recent pothole's damping value
+            c_current = control_data['potholes'][-1]['damping_coeff']
+        else:
+            # Default minimum damping when no potholes
+            c_current = 800.0
+        
+        # Controller parameters for bar scaling
+        c_high = 4000.0  # Maximum damping from skyhook controller
+        bar_width_max = 300
+        bar_height = 20
+        bar_x = 30
+        bar_y = frame.shape[0] - 50  # Position near bottom
+        
+        # Calculate bar length proportionally
+        if c_current > c_high:
+            bar_length = bar_width_max
+        else:
+            bar_length = int((c_current / c_high) * bar_width_max)
+        
+        # Draw background bar (dark)
+        cv2.rectangle(frame, (bar_x, bar_y), 
+                   (bar_x + bar_width_max, bar_y + bar_height), 
+                   (50, 50, 50), -1)
+        
+        # Draw filled bar (blue gradient based on level)
+        if c_current < 1500:
+            bar_color = (0, 255, 0)  # Green - low damping
+        elif c_current < 2500:
+            bar_color = (0, 255, 255)  # Yellow - medium damping
+        else:
+            bar_color = (0, 0, 255)  # Red - high damping
+        
+        cv2.rectangle(frame, (bar_x, bar_y), 
+                   (bar_x + bar_length, bar_y + bar_height), 
+                   bar_color, -1)
+        
+        # Add border
+        cv2.rectangle(frame, (bar_x, bar_y), 
+                   (bar_x + bar_width_max, bar_y + bar_height), 
+                   (255, 255, 255), 2)
+        
+        # Add title
+        cv2.putText(frame, "Suspension Level", 
+                   (bar_x, bar_y - 25),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        
+        # Add numeric damping value
+        cv2.putText(frame, f"Damping: {c_current:.0f} Ns/m", 
+                   (bar_x, bar_y + bar_height + 20),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
 
 def main():
@@ -302,9 +370,9 @@ def main():
     camera_config = {
         'width': 640,
         'height': 384,
-        'focal_length': 500,  # pixels (estimate, needs calibration)
-        'camera_height': 1.2,  # meters above ground
-        'pitch_angle': 15,  # degrees down from horizontal
+        'focal_length': 640,  # pixels (update with your calibrated value)
+        'camera_height': 1.2,  # meters above ground (measure your setup)
+        'pitch_angle': 15,  # degrees down from horizontal (measure your setup)
         'fps': 30
     }
     
@@ -346,7 +414,7 @@ def main():
         frame_times.append(frame_time)
         fps = 1.0 / np.mean(frame_times) if frame_times else 0
         
-        if self.frame_id % 30 == 0:
+        if system.frame_id % 30 == 0:
             print(f"FPS: {fps:.1f}")
         
         if cv2.waitKey(1) & 0xFF == ord('q'):

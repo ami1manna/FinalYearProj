@@ -49,32 +49,26 @@ class IPMDistanceEstimator:
         H_inv : np.ndarray (3x3)
             Inverse homography matrix
         """
-        # Rotation matrix (pitch only, assuming roll=0, yaw=0)
-        R = np.array([
-            [1, 0, 0],
-            [0, np.cos(self.pitch_rad), -np.sin(self.pitch_rad)],
-            [0, np.sin(self.pitch_rad), np.cos(self.pitch_rad)]
+        # Simplified IPM for flat ground plane
+        # Using camera geometry: distance = (h * f) / (v - v0)
+        # where v0 is the horizon line (principal point y-coordinate)
+        
+        fx = self.K[0, 0]  # focal length in x
+        fy = self.K[1, 1]  # focal length in y
+        cx = self.K[0, 2]  # principal point x
+        cy = self.K[1, 2]  # principal point y
+        
+        # Account for pitch angle
+        # The effective horizon line shifts with pitch
+        cy_effective = cy - fy * np.tan(self.pitch_rad)
+        
+        # Create transformation matrix from image to ground
+        # This is a simplified version that works better for our use case
+        H_inv = np.array([
+            [(self.camera_height / fx), 0, -cx * (self.camera_height / fx)],
+            [0, (self.camera_height / fy), -cy_effective * (self.camera_height / fy)],
+            [0, 0, 1]
         ])
-        
-        # Translation vector (camera at height h)
-        t = np.array([[0], [0], [self.camera_height]])
-        
-        # Ground plane normal (z-axis in world frame)
-        n = np.array([[0], [0], [1]])
-        
-        # Distance from camera to ground plane along normal
-        d = self.camera_height
-        
-        # Homography: H = K * (R - t*n^T/d) * K^-1
-        # For ground plane: H = K * R * K^-1 + K * t * n^T / d
-        K_inv = np.linalg.inv(self.K)
-        
-        # Simplified for ground plane
-        H = self.K @ R[:, [0, 1, 2]] - self.K @ (t @ n.T) / d
-        H = H @ K_inv
-        
-        # Inverse homography for image->ground
-        H_inv = np.linalg.inv(H)
         
         return H_inv
     
@@ -121,7 +115,7 @@ class IPMDistanceEstimator:
     def bbox_bottom_distance(self, x1, y1, x2, y2):
         """
         Estimate distance using bottom-center of bounding box.
-        This corresponds to the contact point with the ground.
+        This corresponds to contact point with the ground.
         
         Parameters:
         -----------
@@ -137,9 +131,23 @@ class IPMDistanceEstimator:
         u = (x1 + x2) / 2
         v = y2  # bottom edge
         
-        X, Y, dist = self.image_to_ground(u, v)
+        # Simple pinhole camera model for distance estimation
+        # distance = (h * f) / (v - cy) where cy is principal point y
+        fx = self.K[0, 0]
+        fy = self.K[1, 1] 
+        cx = self.K[0, 2]
+        cy = self.K[1, 2]
         
-        return dist
+        # Account for pitch angle - shift the principal point
+        cy_effective = cy - fy * np.tan(self.pitch_rad)
+        
+        # Distance from camera to point on ground plane
+        if abs(v - cy_effective) < 1e-6:
+            return None  # Point too close to horizon
+            
+        distance = (self.camera_height * fx) / abs(v - cy_effective)
+        
+        return distance
 
 
 # Calibration helper functions

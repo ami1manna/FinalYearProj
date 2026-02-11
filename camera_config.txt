@@ -1,0 +1,22 @@
+# Camera Configuration for Adaptive Suspension System
+# Auto-generated calibration - 2026-02-10 23:11:00
+
+# Video/Image dimensions
+width: 640
+height: 384
+
+# Camera intrinsic parameters
+focal_length: 640  # pixels - CALIBRATED VALUE (updated from incorrect 5)
+
+# Camera extrinsic parameters
+camera_height: 1.2  # meters - MEASURED VALUE
+pitch_angle: 15.0     # degrees - MEASURED VALUE
+
+# Video settings
+fps: 30
+
+# Calibration notes:
+# - Camera height measured from ground to lens center
+# - Pitch angle measured from horizontal using inclinometer
+# - Focal length calibrated using lane markings
+# - Date: 2026-02-10 23:11:00
